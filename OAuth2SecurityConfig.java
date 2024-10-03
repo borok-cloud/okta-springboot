@@ -27,7 +27,11 @@ import org.springframework.security.web.SecurityFilterChain;
 @EnableGlobalMethodSecurity(prePostEnabled = true)
 public class OAuth2SecurityConfig {
 
+    private final CustomOidcUserService customOidcUserService;
 
+    public OAuth2SecurityConfig(CustomOidcUserService customOidcUserService) {
+        this.customOidcUserService = customOidcUserService;
+    }
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -38,7 +42,8 @@ public class OAuth2SecurityConfig {
                 //.oauth2Client(Customizer.withDefaults())  // Enable OAuth2 client functionality for authorization code flow
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(userInfo -> userInfo
-                                .oidcUserService(new CustomOidcUserService())
+                               // .oidcUserService(new CustomOidcUserService())
+                                .oidcUserService(customOidcUserService)
                         )
                 );  // Optionally enable JWT handling for OAuth2 resource servers
 
