@@ -1,10 +1,12 @@
 package com.mars.demoOkata;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.resource.OAuth2ResourceServerConfigurer;
@@ -12,6 +14,13 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
+
+import static org.springframework.security.config.Customizer.withDefaults;
 
 /*
  * Security settings
@@ -23,11 +32,15 @@ import org.springframework.security.web.SecurityFilterChain;
  * CHANGE : With Spring Boot 3.0, we no longer need to extend WebSecurityConfigurerAdapter
  */
 @Configuration
-//@EnableWebSecurity
-@EnableGlobalMethodSecurity(prePostEnabled = true)
+@EnableWebSecurity
+//@EnableGlobalMethodSecurity(prePostEnabled = true)
+@EnableMethodSecurity // Enable method-level security
 public class OAuth2SecurityConfig {
 
     private final CustomOidcUserService customOidcUserService;
+
+    @Autowired
+    private CustomJwtAuthenticationConverter customJwtAuthenticationConverter;
 
     public OAuth2SecurityConfig(CustomOidcUserService customOidcUserService) {
         this.customOidcUserService = customOidcUserService;
@@ -45,7 +58,12 @@ public class OAuth2SecurityConfig {
                                // .oidcUserService(new CustomOidcUserService())
                                 .oidcUserService(customOidcUserService)
                         )
-                );  // Optionally enable JWT handling for OAuth2 resource servers
+                )  // Optionally enable JWT handling for OAuth2 resource servers
+//        .oauth2ResourceServer(rsc -> rsc.jwt(jwtConfigurer ->
+//                jwtConfigurer.jwtAuthenticationConverter(jwtAuthenticationConverter())));
+                .oauth2ResourceServer(rsc -> rsc.jwt(jwtConfigurer ->
+                        jwtConfigurer.jwtAuthenticationConverter(customJwtAuthenticationConverter)));
+        http.cors(withDefaults());
 
         return http.build();
     }
@@ -64,19 +82,23 @@ public class OAuth2SecurityConfig {
 //                        )
 //                )
                // .oauth2ResourceServer(oauth2 -> oauth2.jwt());
-          .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))//Default working
-          .sessionManagement(sMgmt -> sMgmt.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
+         // .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))//Default working
+         // .sessionManagement(sMgmt -> sMgmt.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
 
-//          .oauth2ResourceServer(rsc -> rsc.jwt(jwtConfigurer ->
-//                jwtConfigurer.jwtAuthenticationConverter(jwtAuthenticationConverter())));
+            .oauth2Login(oauth2 -> oauth2
+                    .loginPage("/login")
+                    .defaultSuccessUrl("/user/oauthinfo")
+            )
+          .oauth2ResourceServer(rsc -> rsc.jwt(jwtConfigurer ->
+                jwtConfigurer.jwtAuthenticationConverter(jwtAuthenticationConverter())));
 
-
+        http.cors(withDefaults());
         return http.build();
 	}
 
     private JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
-        grantedAuthoritiesConverter.setAuthoritiesClaimName("SCOPE");  // Read 'groups' claim from token
+        grantedAuthoritiesConverter.setAuthoritiesClaimName("groups");  // Read 'groups' claim from token
         //grantedAuthoritiesConverter.setAuthorityPrefix("ROLE_");
         // Since Okta groups already have the ROLE_ prefix, we don't need to add it manually
         grantedAuthoritiesConverter.setAuthorityPrefix("");  // No prefix needed
@@ -85,5 +107,17 @@ public class OAuth2SecurityConfig {
         jwtAuthenticationConverter.setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter);
 
         return jwtAuthenticationConverter;
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(Arrays.asList("http://localhost:4200")); // Replace with your allowed origins
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type"));
+        configuration.setAllowCredentials(true);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 }
